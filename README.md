@@ -60,12 +60,13 @@ prefix: abc123def456   # the part between "sensor." and "_odometer" in your car'
 | Option | Default | What it does |
 |---|---|---|
 | `prefix` | first Toyota found | Which car to show (entity ID prefix) |
+| `units` | `imperial` | `metric` shows km and L/100 km; `imperial` shows miles and UK mpg |
 
 The card fills the space it's given. It looks best in a **Panel** view or a large section. To change the background, set the CSS variable `--car-card-bg` with card-mod or your theme.
 
 ### Units
 
-The integration reports kilometres and L/100 km. The card shows **miles** and **UK mpg**.
+The integration reports kilometres and L/100 km. Set `units: metric` to keep these units, or `units: imperial` to show **miles** and **UK mpg**. The default remains `imperial` so existing cards keep their current display.
 
 ## Coming from the blog version?
 

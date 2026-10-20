@@ -13,6 +13,8 @@ A dashboard card for Toyotas in the **MyToyota** app, using the community [Toyot
 - A top-down car with each door's state at its corner
 - Range, odometer and a red / amber / green fuel gauge
 - Average mpg, the share of miles driven on electric, the hybrid score and the last trip score
+- For electric and plug-in hybrid cars with battery data, a battery gauge, electric range and charging status
+- Optional extra information: weekly average speed, recent trips, climate, seat heating and hazard lights
 - Last service date and miles since
 - When the car last reported in (tap it to ask the car for a fresh update)
 - Where it's parked: "home" or the distance from home (tap it to open Google Maps)
@@ -60,6 +62,9 @@ prefix: abc123def456   # the part between "sensor." and "_odometer" in your car'
 | Option | Default | What it does |
 |---|---|---|
 | `prefix` | first Toyota found | Which car to show (entity ID prefix) |
+| `show_extra_info` | `false` | Set to `true` to show weekly average speed, recent trips, climate, cabin temperature, seat and steering wheel heaters, hazard lights and trip history |
+
+The battery gauge appears automatically when the selected car reports a numeric battery level (for example, an electric or plug-in hybrid Toyota). `show_extra_info` is opt-in, so existing cards keep their current layout unless you enable it.
 
 The card fills the space it's given. It looks best in a **Panel** view or a large section. To change the background, set the CSS variable `--car-card-bg` with card-mod or your theme.
 

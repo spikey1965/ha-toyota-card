@@ -41,6 +41,14 @@ ha-card { background:var(--car-card-bg,#000); border:1px solid #ffffff1a; border
 .kv span { display:block; font-size:14px; color:#e8e8e8; } .kv b { display:block; font-size:24px; font-weight:400; margin-bottom:8px; }
 .gauge { justify-self:end; width:min(170px,100%); }
 .gauge svg { width:100%; height:auto; display:block; }
+.ev { display:grid; grid-template-columns:54px minmax(90px,1fr) auto; gap:12px; align-items:center; border:1px solid #ffffff22; border-radius:12px; padding:12px 16px; margin-top:14px; background:#ffffff08; }
+.battery-icon { width:48px; height:26px; border:2px solid #d8e1e8; border-radius:5px; padding:3px; position:relative; box-sizing:border-box; }
+.battery-icon::after { content:""; position:absolute; width:4px; height:10px; right:-6px; top:6px; border-radius:0 2px 2px 0; background:#d8e1e8; }
+.battery-fill { height:100%; border-radius:2px; background:var(--green); transition:width .3s ease; }
+.battery-fill.low { background:var(--red); } .battery-fill.medium { background:var(--amber); }
+.ev-main span, .ev-range span { display:block; color:#e8e8e8; font-size:13px; }
+.ev-main b { font-size:23px; font-weight:500; } .ev-range { text-align:right; } .ev-range b { font-size:18px; font-weight:400; }
+.ev-status { grid-column:2 / -1; color:var(--muted); font-size:13px; margin-top:-8px; }
 .hr { position:relative; text-align:center; margin:18px 0 14px; } .hr::before { content:""; position:absolute; left:0; right:0; top:50%; border-top:1px solid #ffffff55; }
 .hr span { position:relative; background:#0b1a2e; border-radius:6px; padding:2px 16px; font-size:16px; color:#e8e8e8; }
 .info { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:10px; align-items:center; }
@@ -58,6 +66,7 @@ ha-card { background:var(--car-card-bg,#000); border:1px solid #ffffff1a; border
   ha-card { padding:18px 28px 24px; } .top { font-size:16px; } .list { font-size:18px; } .kv span, .cells span, .box legend { font-size:17px; }
   .kv b { font-size:34px; } .cells b { font-size:30px; } .box b { font-size:26px; } .corner b { font-size:26px; } .corner span { font-size:14px; }
   .gauge { width:240px; } .mid { gap:40px; } .hr span { font-size:18px; } .topdown svg { max-width:120px; } .cells { gap:16px 16px; }
+  .ev-main span, .ev-range span, .ev-status { font-size:16px; } .ev-main b { font-size:30px; } .ev-range b { font-size:23px; }
 }
 /* phones: stack it, and let the card scroll instead of squeezing */
 @container (max-width:520px) { .mid { grid-template-columns:1fr 1fr; gap:12px; } .gauge { grid-column:1 / -1; justify-self:center; width:200px; }
@@ -84,6 +93,8 @@ class YarisCard extends HTMLElement {
     const S = s => h.states[`sensor.${p}_${s}`], B = s => h.states[`binary_sensor.${p}_${s}`]?.state;
 
     const fuel = num(S("fuel_level")?.state), range = num(S("fuel_range")?.state), odo = num(S("odometer")?.state);
+    const battery = num(S("battery_level")?.state), batteryRange = num(S("battery_range")?.state), batteryRangeAC = num(S("battery_range_with_ac")?.state);
+    const charging = S("charging_status")?.state, chargeTime = S("remaining_charging_time")?.state;
     // binary sensors: door/window/hood/trunk on = open, lock on = unlocked
     const doors = { driverseat: "driver", passengerseat: "passenger", leftrearseat: "rear left", rightrearseat: "rear right" };
     const unlocked = [...Object.keys(doors), "trunk"].some(k => B(`${k}_lock`) === "on") || h.states[`lock.${p}_door_lock`]?.state === "unlocked";
@@ -96,6 +107,10 @@ class YarisCard extends HTMLElement {
     const mpg = num(yr.Average_fuel_consumed) ? Math.round(L100_MPG / yr.Average_fuel_consumed) : null;
     const evPct = yrKm && num(yr.EV_distance) !== null ? Math.round(100 * yr.EV_distance / yrKm) : null;
     const trip = (S("recent_trips")?.attributes?.trips || [])[0];
+    const tripCount = num(S("recent_trips")?.state), avgSpeed = num(S("average_speed_week")?.state);
+    const climate = h.states[`climate.${p}_climate`], climateAttrs = climate?.attributes || {};
+    const climateOn = climate && !["off", "unavailable", "unknown"].includes(climate.state);
+    const hazardsOn = h.states[`switch.${p}_hazard_lights`]?.state === "on";
     const svc = S("last_service"), svcOdo = num(svc?.attributes?.odometer);
     const warn = (num(S("warning_lights")?.state) || 0) > 0 || B("vehicle_health") === "on";
     const pic = tr?.attributes?.entity_picture;
@@ -111,6 +126,21 @@ class YarisCard extends HTMLElement {
     const gauge = `<svg viewBox="0 0 200 112">${arc(0, .3, "var(--red)")}${arc(.3, .62, "var(--amber)")}${arc(.62, 1, "var(--green)")}
       <line x1="${nx0.toFixed(1)}" y1="${ny0.toFixed(1)}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
       <text x="100" y="108" text-anchor="middle" fill="#fff" font-size="44" font-weight="500">${fuel === null ? "–" : Math.round(fuel)}%</text></svg>`;
+    const batt = Math.max(0, Math.min(100, battery ?? 0));
+    const battClass = batt <= 20 ? "low" : batt <= 50 ? "medium" : "";
+    const batteryCard = battery === null ? "" : `<div class="ev"><div class="battery-icon" role="img" aria-label="${Math.round(battery)} percent battery"><div class="battery-fill ${battClass}" style="width:${batt}%"></div></div>
+      <div class="ev-main"><span>hybrid battery</span><b>${Math.round(battery)}%</b></div>
+      <div class="ev-range"><span>electric range</span><b>${mi(batteryRange)} mi</b><span>with A/C: ${mi(batteryRangeAC)} mi</span></div>
+      <div class="ev-status">${charging === "unknown" || charging === "unavailable" || !charging ? "Charging: –" : `Charging: ${esc(charging)}`}${chargeTime && !["unknown", "unavailable"].includes(chargeTime) ? ` · ${esc(chargeTime)} remaining` : ""}</div></div>`;
+    const extraInfo = this._config.show_extra_info === true ? `
+          <div><span>average speed this week</span><b>${avgSpeed === null ? "–" : `${(avgSpeed * KM_MI).toLocaleString("en-GB", { maximumFractionDigits: 0 })} mph`}</b></div>
+          <div><span>recent trips</span><b>${tripCount === null ? "–" : tripCount}</b></div>
+          <div><span>climate</span><b>${climateOn ? "on" : climate ? "off" : "–"}${num(climateAttrs.temperature) === null ? "" : ` · ${num(climateAttrs.temperature)}°`}</b></div>
+          <div><span>cabin temperature</span><b>${num(S("cabin_temperature")?.state) === null ? "–" : `${num(S("cabin_temperature").state)}°`}</b></div>
+          <div><span>seat heating</span><b>${["seat_heater_driver", "seat_heater_passenger", "seat_heater_rear_driver", "seat_heater_rear_passenger"].some(k => climateAttrs[k] && climateAttrs[k] !== "off") ? "on" : "off"}</b></div>
+          <div><span>steering wheel heater</span><b>${climateAttrs.steering_heater ? "on" : "off"}</b></div>
+          <div><span>hazard lights</span><b>${hazardsOn ? "on" : "off"}</b></div>
+          <div><span>trip history</span><b>${trip ? esc(trip.label || trip.name || "available") : "No trips yet"}</b></div>` : "";
 
     // top-down car (front at the top); doors at the corners. UK cars are right-hand drive, so the driver's door is top right
     const corner = (k, lbl) => { const o = B(`${k}_door`) === "on"; return `<div class="corner ${o ? "bad" : ""}"><b>${o ? "Open" : "Shut"}</b><span>${lbl}</span></div>`; };
@@ -138,11 +168,13 @@ class YarisCard extends HTMLElement {
         <div class="kv"><span>estimated range</span><b>${mi(range)} mi</b><span>odometer</span><b>${mi(odo)} mi</b></div>
         <div class="gauge">${gauge}</div>
       </div>
+      ${batteryCard}
       <div class="hr"><span>information</span></div>
       <div class="info">
         <div class="cells">
           <div><span>average mpg</span><b>${mpg ?? "–"}</b></div><div><span>electric miles</span><b>${evPct ?? "–"}%</b></div>
           <div><span>hybrid score</span><b>${yr.Hybrid_score ? Math.round(yr.Hybrid_score) : "–"}</b></div><div><span>last trip score</span><b>${trip?.scores?.global ?? "–"}</b></div>
+          ${extraInfo}
           <fieldset class="box"><legend>last service</legend><b>${svc?.state ? new Date(svc.state).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–"}</b>
             <b>${svcOdo !== null && odo !== null ? `${mi(odo - svcOdo)} mi ago` : ""}</b></fieldset>
         </div>

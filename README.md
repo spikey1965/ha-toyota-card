@@ -42,7 +42,7 @@ It lays itself out for phones, tablets and full-page panel views.
 
 1. Download `toyota-card.js` from the [latest release](../../releases/latest).
 2. Copy it to `config/www/toyota-card.js`.
-3. Go to **Settings → Dashboards → ⋮ → Resources**, add `/local/toyota-card.js?v=1.0.1` as a **JavaScript module**, then reload your browser.
+3. Go to **Settings → Dashboards → ⋮ → Resources**, add `/local/toyota-card.js?v=1.1.0` as a **JavaScript module**, then reload your browser.
 
 ## Use
 
@@ -62,6 +62,7 @@ prefix: abc123def456   # the part between "sensor." and "_odometer" in your car'
 | Option | Default | What it does |
 |---|---|---|
 | `prefix` | first Toyota found | Which car to show (entity ID prefix) |
+| `units` | `imperial` | `metric` shows km, km/h and L/100 km; `imperial` shows miles, mph and UK mpg |
 | `show_extra_info` | `false` | Set to `true` to show weekly average speed, recent trips, climate, cabin temperature, seat and steering wheel heaters, hazard lights and trip history |
 
 The battery gauge appears automatically when the selected car reports a numeric battery level (for example, an electric or plug-in hybrid Toyota). `show_extra_info` is opt-in, so existing cards keep their current layout unless you enable it.
@@ -70,7 +71,7 @@ The card fills the space it's given. It looks best in a **Panel** view or a larg
 
 ### Units
 
-The integration reports kilometres and L/100 km. The card shows **miles** and **UK mpg**.
+The integration reports kilometres, km/h and L/100 km. The `units` option applies to vehicle and electric range, odometer, distance from home, distance since last service, and weekly average speed. Set `units: metric` to keep metric units, or `units: imperial` to show **miles**, **mph** and **UK mpg**. The default remains `imperial` so existing cards keep their current display.
 
 ## Coming from the blog version?
 

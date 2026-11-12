@@ -7,6 +7,7 @@
 // Usage:  type: custom:toyota-card
 //         prefix: <your car's entity prefix or model suffix>   (optional - the first Toyota found is used)
 //         units: metric | imperial   (optional; defaults to imperial for backwards compatibility)
+//         image: <URL or local path to a car photo>   (optional; falls back to integration entity_picture)
 
 const VERSION = "1.2.0";
 const KM_MI = 0.621371, L100_MPG = 282.481;
@@ -105,7 +106,7 @@ class YarisCard extends HTMLElement {
     const distance = (val, dp = 0, srcUnit = "km") => {
       if (val === null) return "–";
       const u = String(srcUnit || "km").toLowerCase();
-      const km = u === "mi" || u === "miles" ? val / KM_MI : val;
+      const km = u === "mi" || u === "miles" || u === "mph" ? val / KM_MI : val;
       return formatNumber(units === "metric" ? km : km * KM_MI, locale, dp);
     };
     const entDist = (ent, dp = 0) => distance(num(ent?.state), dp, ent?.attributes?.unit_of_measurement);
@@ -126,9 +127,10 @@ class YarisCard extends HTMLElement {
     const hasLocks = !na || lockKeys.some(k => BE(`${k}${lockSuffix}`)) || !!lockEnt;
     const unlocked = lockKeys.some(k => B(`${k}${lockSuffix}`) === "on") || lockEnt?.state === "unlocked";
     const hasTrunk = !na || !!BE("trunk"), hasHood = !na || !!BE("hood");
-    const winKeys = na ? [...Object.keys(doors), "moonroof"] : Object.keys(doors);
-    const hasWins = !na || winKeys.some(k => BE(k === "moonroof" ? "moonroof" : `${k}_window`));
-    const winsOpen = winKeys.some(k => B(k === "moonroof" ? "moonroof" : `${k}_window`) === "on");
+    const sideWinKeys = Object.keys(doors);
+    const hasWins = !na || sideWinKeys.some(k => BE(`${k}_window`));
+    const winsOpen = sideWinKeys.some(k => B(`${k}_window`) === "on");
+    const hasMoonroof = na && !!BE("moonroof"), moonroofOpen = B("moonroof") === "on";
     const driving = na ? (num(S("speed")?.state) || 0) > 0 : B("driving") === "on";
     const tr = na ? (h.states[`device_tracker.last_parked_location_${p}`] || h.states[`device_tracker.current_location_${p}`]) : h.states[`device_tracker.${p}_parking_location`];
     const z = h.states["zone.home"]?.attributes, la = tr?.attributes?.latitude, lo = tr?.attributes?.longitude;
@@ -148,9 +150,9 @@ class YarisCard extends HTMLElement {
     const svc = S("last_service"), svcOdo = num(svc?.attributes?.odometer), nextSvcEnt = S("next_service"), nextSvc = num(nextSvcEnt?.state);
     const hasWarn = !na || !!S("warning_lights") || !!BE("vehicle_health");
     const warn = (num(S("warning_lights")?.state) || 0) > 0 || B("vehicle_health") === "on";
-    const pic = tr?.attributes?.entity_picture;
+    const pic = this._config.image || tr?.attributes?.entity_picture;
 
-    const st = (label, open, word = ["closed", "open"], cls = "bad", known = true) => !known ? `${label}: <b>–</b><br>` : `${label}: <b class="${open ? cls : ""}">${open ? word[1] : word[0]}</b><br>`;
+    const st = (label, open, word = ["closed", "open"], cls = "bad", known = true) => !known ? "" : `${label}: <b class="${open ? cls : ""}">${open ? word[1] : word[0]}</b><br>`;
 
     // fuel gauge: red / amber / green bands, white needle, big %
     const f = Math.max(0, Math.min(100, fuel ?? 0)), arc = (a0, a1, c) => {
@@ -168,8 +170,9 @@ class YarisCard extends HTMLElement {
       <div class="ev-range"><span>electric range</span><b>${entDist(batteryRangeEnt)} ${distanceUnit}</b><span>with A/C: ${entDist(batteryRangeAC)} ${distanceUnit}</span></div>
       <div class="ev-status">${charging === "unknown" || charging === "unavailable" || !charging ? "Charging: –" : `Charging: ${esc(charging)}`}${chargeTime && !["unknown", "unavailable"].includes(chargeTime) ? ` · ${esc(chargeTime)} remaining` : ""}</div></div>`;
     const extraInfo = this._config.show_extra_info === true ? (na ? `
-          <div><span>current speed</span><b>${num(S("speed")?.state) === null ? "–" : `${entDist(S("speed"))} ${units === "metric" ? "km/h" : "mph"}`}</b></div>
-          <div><span>remote start</span><b>${BE("remote_start") ? (B("remote_start") === "on" ? "on" : "off") : "–"}</b></div>
+          ${num(S("speed")?.state) !== null ? `<div><span>current speed</span><b>${entDist(S("speed"))} ${units === "metric" ? "km/h" : "mph"}</b></div>` : ""}
+          ${BE("remote_start") ? `<div><span>remote start</span><b>${B("remote_start") === "on" ? "on" : "off"}</b></div>` : ""}
+          ${S("last_tire_pressure_update_timestamp") ? `<div><span>tires updated</span><b>${since(S("last_tire_pressure_update_timestamp").state)}</b></div>` : ""}
           ${S("trip_details_a") ? `<div><span>trip A</span><b>${entDist(S("trip_details_a"), 1)} ${distanceUnit}</b></div>` : ""}
           ${S("trip_details_b") ? `<div><span>trip B</span><b>${entDist(S("trip_details_b"), 1)} ${distanceUnit}</b></div>` : ""}` : `
           <div><span>average speed this week</span><b>${avgSpeed === null ? "–" : `${distance(avgSpeed)} ${units === "metric" ? "km/h" : "mph"}`}</b></div>
@@ -222,8 +225,8 @@ class YarisCard extends HTMLElement {
       <div class="hero">${pic ? `<img src="${esc(pic)}" alt="">` : `<ha-icon icon="mdi:car-hatchback"></ha-icon>`}</div>
       <div class="mid">
         <div class="list">${st("doors", unlocked, ["locked", "unlocked"], "warn", hasLocks)}${st(na ? "trunk" : "boot", B("trunk") === "on", ["closed", "open"], "bad", hasTrunk)}${st(na ? "hood" : "bonnet", B("hood") === "on", ["closed", "open"], "bad", hasHood)}
-          ${st("windows", winsOpen, ["closed", "open"], "bad", hasWins)}${st("warnings", warn, ["none", "on"], "bad", hasWarn)}</div>
-        <div class="kv"><span>estimated range</span><b>${entDist(rangeEnt)} ${distanceUnit}</b><span>odometer</span><b>${entDist(odoEnt)} ${distanceUnit}</b></div>
+          ${st("windows", winsOpen, ["closed", "open"], "bad", hasWins)}${st("moonroof", moonroofOpen, ["closed", "open"], "bad", hasMoonroof)}${st("warnings", warn, ["none", "on"], "bad", hasWarn)}</div>
+        <div class="kv">${!na || range !== null ? `<span>estimated range</span><b>${entDist(rangeEnt)} ${distanceUnit}</b>` : ""}<span>odometer</span><b>${entDist(odoEnt)} ${distanceUnit}</b></div>
         <div class="gauge">${gauge}</div>
       </div>
       ${batteryCard}

@@ -72,6 +72,7 @@ prefix: abc123def456   # ha_toyota: the part between "sensor." and "_odometer"
 | `prefix` | first Toyota found | Which car to show (entity ID prefix for `ha_toyota`, or model suffix for `ha-toyota-na`) |
 | `units` | `imperial` | `metric` shows km, km/h and L/100 km; `imperial` shows miles, mph and UK mpg |
 | `show_extra_info` | `false` | Set to `true` to show optional extra vehicle details |
+| `image` | integration `entity_picture` | Optional image URL or `/local/...` path for the car photo (useful for `ha-toyota-na`, which does not provide `entity_picture`) |
 
 The battery gauge appears automatically when the selected car reports a numeric battery level (for example, an electric or plug-in hybrid Toyota). `show_extra_info` is opt-in, so existing cards keep their current layout unless you enable it.
 

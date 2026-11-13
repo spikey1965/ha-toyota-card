@@ -2,7 +2,7 @@
 // Toyota Connected Services integration (pytoyoda/ha_toyota or widewing/ha-toyota-na, installed from HACS).
 // Shows: last update, parked distance from home, photo, doors/boot(trunk)/bonnet(hood)/windows/warnings,
 // range + odometer, a fuel gauge, mpg / electric / hybrid scores, last/next service, and a
-// top-down car with each door's state (or tire pressures on North American vehicles without door sensors).
+// top-down car with each door and window state (or tire pressures + windows on North American vehicles without door sensors).
 // Choose metric or imperial display units.
 // Usage:  type: custom:toyota-card
 //         prefix: <your car's entity prefix or model suffix>   (optional - the first Toyota found is used)
@@ -62,12 +62,12 @@ ha-card { background:var(--car-card-bg,#000); border:1px solid #ffffff1a; border
 .box b { display:block; font-size:20px; font-weight:400; line-height:1.4; }
 .topdown { display:grid; grid-template-columns:auto 1fr auto; grid-template-rows:1fr 1fr; align-items:center; gap:4px; }
 .topdown svg { grid-row:1 / 3; grid-column:2; width:100%; max-width:110px; height:auto; justify-self:center; }
-.corner { text-align:center; } .corner b { display:block; font-size:20px; font-weight:400; } .corner span { font-size:12px; color:var(--muted); text-transform:uppercase; }
-.corner.bad b { color:var(--red); }
+.corner { text-align:center; } .corner b { display:block; font-size:20px; font-weight:400; } .corner span { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; }
+.corner small { display:block; font-size:11px; color:var(--muted); margin-top:2px; line-height:1.2; } .corner.bad b, .corner small.bad { color:var(--red); } .corner small.bad { font-weight:500; }
 /* wide screens (e.g. an iPad in landscape): bigger type */
 @container (min-width:700px) {
   ha-card { padding:18px 28px 24px; } .top { font-size:16px; } .list { font-size:18px; } .kv span, .cells span, .box legend { font-size:17px; }
-  .kv b { font-size:34px; } .cells b { font-size:30px; } .box b { font-size:26px; } .corner b { font-size:26px; } .corner span { font-size:14px; }
+  .kv b { font-size:34px; } .cells b { font-size:30px; } .box b { font-size:26px; } .corner b { font-size:26px; } .corner span { font-size:14px; } .corner small { font-size:13px; }
   .gauge { width:240px; } .mid { gap:40px; } .hr span { font-size:18px; } .topdown svg { max-width:120px; } .cells { gap:16px 16px; }
   .ev-main span, .ev-range span, .ev-status { font-size:16px; } .ev-main b { font-size:30px; } .ev-range b { font-size:23px; }
 }
@@ -128,8 +128,10 @@ class YarisCard extends HTMLElement {
     const unlocked = lockKeys.some(k => B(`${k}${lockSuffix}`) === "on") || lockEnt?.state === "unlocked";
     const hasTrunk = !na || !!BE("trunk"), hasHood = !na || !!BE("hood");
     const sideWinKeys = Object.keys(doors);
-    const hasWins = !na || sideWinKeys.some(k => BE(`${k}_window`));
-    const winsOpen = sideWinKeys.some(k => B(`${k}_window`) === "on");
+    const winEnt = k => BE(`${k}_window`);
+    const hasKnownState = ent => !!ent && !["unknown", "unavailable"].includes(ent.state);
+    const hasWins = sideWinKeys.some(k => hasKnownState(winEnt(k)));
+    const winsOpen = sideWinKeys.some(k => winEnt(k)?.state === "on");
     const hasMoonroof = na && !!BE("moonroof"), moonroofOpen = B("moonroof") === "on";
     const driving = na ? (num(S("speed")?.state) || 0) > 0 : B("driving") === "on";
     const tr = na ? (h.states[`device_tracker.last_parked_location_${p}`] || h.states[`device_tracker.current_location_${p}`]) : h.states[`device_tracker.${p}_parking_location`];
@@ -191,15 +193,18 @@ class YarisCard extends HTMLElement {
           <div><span>hazard lights</span><b>${hazardsOn ? "on" : "off"}</b></div>
           <div><span>trip history</span><b>${trip ? esc(trip.label || trip.name || "available") : "No trips yet"}</b></div>`) : "";
 
-    // top-down car (front at the top); doors (or tire pressures on NA when doors aren't present) at the corners.
+    // top-down car (front at the top); doors, windows, or tire pressures at the corners.
     // UK cars are right-hand drive (driver top right); NA cars are left-hand drive (driver top left).
     const corner = (k, lbl) => {
       const dEnt = BE(`${k}_door`), tEnt = na ? S(`${k}_tire`) : null, psi = num(tEnt?.state);
-      if (dEnt) { const o = dEnt.state === "on"; return `<div class="corner ${o ? "bad" : ""}"><b>${o ? "Open" : na ? "Closed" : "Shut"}</b><span>${lbl}</span></div>`; }
-      if (psi !== null) return `<div class="corner ${psi < 28 ? "bad" : ""}"><b>${Math.round(psi)} ${esc(tEnt.attributes?.unit_of_measurement || "psi")}</b><span>${lbl}</span></div>`;
+      const wEnt = winEnt(k), hasWin = hasKnownState(wEnt), wOpen = wEnt?.state === "on";
+      const winLine = hasWin ? `<small class="${wOpen ? "bad" : ""}">win: ${wOpen ? "open" : na ? "closed" : "shut"}</small>` : "";
+      if (dEnt) { const o = dEnt.state === "on"; return `<div class="corner ${o ? "bad" : ""}"><b>${o ? "Open" : na ? "Closed" : "Shut"}</b><span>${lbl}</span>${winLine}</div>`; }
+      if (psi !== null) return `<div class="corner ${psi < 28 ? "bad" : ""}"><b>${Math.round(psi)} ${esc(tEnt.attributes?.unit_of_measurement || "psi")}</b><span>${lbl}</span>${winLine}</div>`;
+      if (hasWin) return `<div class="corner ${wOpen ? "bad" : ""}"><b>${wOpen ? "Open" : na ? "Closed" : "Shut"}</b><span>${lbl}</span><small>window</small></div>`;
       return `<div class="corner"><b>${na ? "–" : "Shut"}</b><span>${lbl}</span></div>`;
     };
-    const doorCol = k => B(`${k}_door`) === "on" ? "#e0533d" : "#2b2b2b";
+    const doorCol = k => B(`${k}_door`) === "on" || winEnt(k)?.state === "on" ? "#e0533d" : "#2b2b2b";
     const [flKey, flLbl, frKey, frLbl, rlKey, rlLbl, rrKey, rrLbl] = na
       ? ["front_driver", "driver", "front_passenger", "passenger", "rear_driver", "rear left", "rear_passenger", "rear right"]
       : ["passengerseat", "passenger", "driverseat", "driver", "leftrearseat", "rear left", "rightrearseat", "rear right"];

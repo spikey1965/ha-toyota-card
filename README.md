@@ -49,7 +49,7 @@ The first time you use Marketplace, tick **I understand the risks and agree** an
 
 1. Download `toyota-card.js` from the [latest release](../../releases/latest).
 2. Copy it to `config/www/toyota-card.js`.
-3. Go to **Settings → Dashboards → ⋮ → Resources**, add `/local/toyota-card.js?v=1.2.0` as a **JavaScript module**, then reload your browser.
+3. Go to **Settings → Dashboards → ⋮ → Resources**, add `/local/toyota-card.js?v=1.2.1` as a **JavaScript module**, then reload your browser.
 
 ## Use
 

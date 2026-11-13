@@ -9,7 +9,7 @@
 //         units: metric | imperial   (optional; defaults to imperial for backwards compatibility)
 //         image: <URL or local path to a car photo>   (optional; falls back to integration entity_picture)
 
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const KM_MI = 0.621371, L100_MPG = 282.481;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const num = v => (v === undefined || v === null || v === "" || isNaN(+v)) ? null : +v;
@@ -148,6 +148,13 @@ class YarisCard extends HTMLElement {
     const climateOn = climate && !["off", "unavailable", "unknown"].includes(climate.state);
     const hazardsOn = h.states[`switch.${p}_hazard_lights`]?.state === "on";
     const svc = S("last_service"), svcOdo = num(svc?.attributes?.odometer), nextSvcEnt = S("next_service"), nextSvc = num(nextSvcEnt?.state);
+    // ha_toyota reports the service odometer in the integration's own unit (km or mi), the same unit as the odometer
+    // sensor, unless the odometer's display unit was changed in HA (then the service odometer stays in km).
+    const odoUnit = String(odoEnt?.attributes?.unit_of_measurement || "km").toLowerCase();
+    const odoMi = odoUnit === "mi" || odoUnit === "miles";
+    let svcAt = svcOdo;
+    if (svcAt !== null && odo !== null && odoMi && svcAt > odo && svcAt * KM_MI <= odo) svcAt *= KM_MI;
+    const svcGap = svcAt !== null && odo !== null && odo >= svcAt ? odo - svcAt : null;
     const hasWarn = !na || !!S("warning_lights") || !!BE("vehicle_health");
     const warn = (num(S("warning_lights")?.state) || 0) > 0 || B("vehicle_health") === "on";
     const pic = this._config.image || tr?.attributes?.entity_picture;
@@ -216,7 +223,7 @@ class YarisCard extends HTMLElement {
     const svcBox = na
       ? (nextSvc !== null ? `<fieldset class="box"><legend>next service</legend><b>in ${entDist(nextSvcEnt)} ${distanceUnit}</b></fieldset>` : "")
       : `<fieldset class="box"><legend>last service</legend><b>${svc?.state && !["unknown", "unavailable"].includes(svc.state) ? new Date(svc.state).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–"}</b>
-            <b>${svcOdo !== null && odo !== null ? `${distance(odo - svcOdo)} ${distanceUnit} ago` : ""}</b></fieldset>`;
+            <b>${svcGap !== null ? `${distance(svcGap, 0, odoUnit)} ${distanceUnit} ago` : ""}</b></fieldset>`;
     const cellsHtml = statsHtml || extraInfo || svcBox ? `<div class="cells">${statsHtml}${extraInfo}${svcBox}</div>` : "";
 
     r.innerHTML = `<style>${CSS}</style><ha-card>

@@ -9,7 +9,7 @@
 //         units: metric | imperial   (optional; defaults to imperial for backwards compatibility)
 //         image: <URL or local path to a car photo>   (optional; falls back to integration entity_picture)
 
-const VERSION = "1.2.2";
+const VERSION = "1.2.3";
 const KM_MI = 0.621371, L100_MPG = 282.481;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const num = v => (v === undefined || v === null || v === "" || isNaN(+v)) ? null : +v;
@@ -81,18 +81,28 @@ class YarisCard extends HTMLElement {
   getCardSize() { return 9; }
   set hass(h) {
     this._hass = h;
-    let p = this._config.prefix, na = false;
+    // na = North American sensor names (widewing/ha-toyota-na); sfx = the car name comes first (sensor.<car>_odometer),
+    // as in ha-toyota-na builds that use Home Assistant's newer entity naming (e.g. the 24MM / 2026 RAV4 fork).
+    let p = this._config.prefix, na = false, sfx = false;
+    const isNA = e => h.entities?.[e]?.platform === "toyota_na";
+    const naNew = c => h.states[`sensor.${c}_distance_to_empty`] || h.states[`sensor.${c}_ev_battery_level`] || isNA(`sensor.${c}_odometer`);
     if (!p) {
-      const k = Object.keys(h.states).find(e => /^sensor\..+_fuel_range$/.test(e) && h.states[e.replace("_fuel_range", "_odometer")]);
+      const k = Object.keys(h.states).find(e => /^sensor\..+_fuel_range$/.test(e) && h.states[e.replace("_fuel_range", "_odometer")] && !isNA(e));
       if (k) p = k.slice(7, -11);
       else {
         const nk = Object.keys(h.states).find(e => /^sensor\.odometer_.+$/.test(e) && (h.states[e.replace("sensor.odometer_", "sensor.fuel_level_")] || h.states[e.replace("sensor.odometer_", "sensor.distance_to_empty_")] || h.states[e.replace("sensor.odometer_", "sensor.ev_battery_level_")]));
         if (nk) { p = nk.slice(16); na = true; }
+        else {
+          const sk = Object.keys(h.states).find(e => /^sensor\..+_odometer$/.test(e) && (isNA(e) || naNew(e.slice(7, -9))));
+          if (sk) { p = sk.slice(7, -9); na = true; sfx = true; }
+        }
       }
     } else if (!h.states[`sensor.${p}_odometer`] && !h.states[`sensor.${p}_fuel_range`] && (h.states[`sensor.odometer_${p}`] || h.states[`sensor.fuel_level_${p}`] || h.states[`sensor.distance_to_empty_${p}`])) {
       na = true;
+    } else if (!h.states[`sensor.${p}_fuel_range`] && naNew(p)) {
+      na = true; sfx = true;
     }
-    this._p = p; this._na = na;
+    this._p = p; this._na = na; this._sfx = sfx;
     // only redraw when something shown changes (plus once a minute for the "x hours" clock)
     const sig = p ? Object.keys(h.states).filter(e => e.includes(p)).map(e => e + h.states[e].last_updated).join() + Math.floor(Date.now() / 60000) : "none";
     if (sig === this._sig) return; this._sig = sig;
@@ -100,7 +110,8 @@ class YarisCard extends HTMLElement {
   }
   _render() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    const r = this.shadowRoot, h = this._hass, p = this._p, na = this._na;
+    const r = this.shadowRoot, h = this._hass, p = this._p, na = this._na, sfx = this._sfx;
+    const id = (dom, s) => na && !sfx ? `${dom}.${s}_${p}` : `${dom}.${p}_${s}`;   // entity id for this car's naming style
     const units = this._config.units === "metric" ? "metric" : "imperial";
     const locale = h.locale?.language;
     const distance = (val, dp = 0, srcUnit = "km") => {
@@ -111,8 +122,16 @@ class YarisCard extends HTMLElement {
     };
     const entDist = (ent, dp = 0) => distance(num(ent?.state), dp, ent?.attributes?.unit_of_measurement);
     const distanceUnit = units === "metric" ? "km" : "mi";
-    if (!p) { r.innerHTML = `<style>${CSS}</style><ha-card>No Toyota car found (pytoyoda/ha_toyota or widewing/ha-toyota-na integration).</ha-card>`; return; }
-    const S = s => h.states[na ? `sensor.${s}_${p}` : `sensor.${p}_${s}`], B = s => h.states[na ? `binary_sensor.${s}_${p}` : `binary_sensor.${p}_${s}`]?.state, BE = s => h.states[na ? `binary_sensor.${s}_${p}` : `binary_sensor.${p}_${s}`];
+    if (!p) {
+      // ha-toyota-na is installed but made no odometer / fuel sensors: 2026+ (24MM) cars such as the new RAV4 send their data
+      // through an API the current ha-toyota-na release doesn't read yet, so the car only gets a lock and remote start.
+      const naOnly = Object.values(h.entities || {}).some(e => e.platform === "toyota_na");
+      r.innerHTML = `<style>${CSS}</style><ha-card>${naOnly
+        ? "ha-toyota-na is installed, but it hasn't created any odometer or fuel sensors for your car, so there's nothing to show yet. 2026 and newer models (Toyota's new 24MM platform, e.g. the 2026 RAV4) need a newer ha-toyota-na: see the card's README on GitHub."
+        : "No Toyota car found (pytoyoda/ha_toyota or widewing/ha-toyota-na integration)."}</ha-card>`;
+      return;
+    }
+    const S = s => h.states[id("sensor", s)], B = s => h.states[id("binary_sensor", s)]?.state, BE = s => h.states[id("binary_sensor", s)];
 
     const fuel = num(S("fuel_level")?.state), rangeEnt = S(na ? "distance_to_empty" : "fuel_range"), range = num(rangeEnt?.state), odoEnt = S("odometer"), odo = num(odoEnt?.state);
     const battery = num(S(na ? "ev_battery_level" : "battery_level")?.state), batteryRangeEnt = S(na ? "ev_range" : "battery_range"), batteryRangeAC = S(na ? "ev_range_ac" : "battery_range_with_ac");
@@ -134,7 +153,7 @@ class YarisCard extends HTMLElement {
     const winsOpen = sideWinKeys.some(k => winEnt(k)?.state === "on");
     const hasMoonroof = na && !!BE("moonroof"), moonroofOpen = B("moonroof") === "on";
     const driving = na ? (num(S("speed")?.state) || 0) > 0 : B("driving") === "on";
-    const tr = na ? (h.states[`device_tracker.last_parked_location_${p}`] || h.states[`device_tracker.current_location_${p}`]) : h.states[`device_tracker.${p}_parking_location`];
+    const tr = na ? (h.states[id("device_tracker", "last_parked_location")] || h.states[id("device_tracker", "current_location")]) : h.states[`device_tracker.${p}_parking_location`];
     const z = h.states["zone.home"]?.attributes, la = tr?.attributes?.latitude, lo = tr?.attributes?.longitude;
     const away = z && la ? dist(z.latitude, z.longitude, la, lo) : null;
     const awayKm = away === null ? null : away / 1000;
@@ -251,7 +270,7 @@ class YarisCard extends HTMLElement {
 
     r.querySelector(".upd").addEventListener("click", () => {
       if (na) {
-        const devId = h.entities?.[`sensor.odometer_${p}`]?.device_id || h.entities?.[`sensor.fuel_level_${p}`]?.device_id;
+        const devId = h.entities?.[id("sensor", "odometer")]?.device_id || h.entities?.[id("sensor", "fuel_level")]?.device_id;
         if (devId) h.callService("toyota_na", "refresh", { vehicle: devId });
       } else {
         h.callService("button", "press", { entity_id: `button.${p}_refresh_vehicle_status` });

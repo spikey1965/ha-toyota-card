@@ -64,7 +64,8 @@ That's it. The card finds your car on its own. If you have more than one Toyota,
 ```yaml
 type: custom:toyota-card
 prefix: abc123def456   # ha_toyota: the part between "sensor." and "_odometer"
-                       # ha-toyota-na: the part after "sensor.odometer_" (e.g. 2024_rav4)
+                       # ha-toyota-na: the part after "sensor.odometer_" (e.g. 2024_rav4),
+                       #   or before "_odometer" if your entities are named sensor.2026_rav4_odometer
 ```
 
 | Option | Default | What it does |
@@ -81,6 +82,10 @@ The card fills the space it's given. It looks best in a **Panel** view or a larg
 ### Units
 
 The `units` option applies to vehicle and electric range, odometer, distance from home, distance since last service (or until next service), and speed. Sensors that report their own unit (`mi` or `km`) are converted automatically. Set `units: metric` to keep metric units, or `units: imperial` to show **miles**, **mph** and **UK mpg**. The default remains `imperial` so existing cards keep their current display.
+
+### 2026 and newer models (Toyota's 24MM platform, e.g. the 2026 RAV4)
+
+These cars send their data through a newer Toyota API that the current `widewing/ha-toyota-na` release (2.7.0) doesn't read yet, so it only creates a lock and remote start for them, with no odometer, fuel or battery. The card then has nothing to show and says so. Support is in progress upstream ([widewing/ha-toyota-na #191](https://github.com/widewing/ha-toyota-na/pull/191), and a maintained fork, [orienw/ha-toyota-na](https://github.com/orienw/ha-toyota-na)). Once your car has an odometer sensor, the card finds it automatically, whichever way the entities are named (`sensor.odometer_2026_rav4` or `sensor.2026_rav4_odometer`).
 
 ## Coming from the blog version?
 
